@@ -1,10 +1,11 @@
-from flask import Flask, request
+from flask import Flask, request, redirect, session
 from flask_sqlalchemy import SQLAlchemy
 import os
 
 app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", "clave-secreta")  # ¡Reemplaza esto en producción!
 
-# Configuración Neon.tech
+# Configuración de base de datos
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -31,9 +32,43 @@ class Inscripcion(db.Model):
     fecha_inscripcion = db.Column(db.Date, server_default=db.func.current_date())
     __table_args__ = (db.UniqueConstraint('estudiante_id', 'curso_id', name='_est_curso_uc'),)
 
-# Ruta principal
+
+# Ruta login
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        usuario = request.form.get("usuario")
+        contrasena = request.form.get("contrasena")
+
+        if usuario == "angel" and contrasena == "1234":
+            session["usuario"] = usuario
+            return redirect("/")
+        else:
+            return "<h3>❌ Usuario o contraseña incorrectos</h3><a href='/login'>Volver</a>"
+
+    return """
+        <h2>Iniciar sesión</h2>
+        <form method="POST">
+            Usuario: <input type="text" name="usuario" required><br>
+            Contraseña: <input type="password" name="contrasena" required><br>
+            <input type="submit" value="Entrar">
+        </form>
+    """
+
+
+# Ruta logout
+@app.route("/logout")
+def logout():
+    session.pop("usuario", None)
+    return redirect("/login")
+
+
+# Ruta principal protegida
 @app.route("/", methods=["GET", "POST"])
 def index():
+    if "usuario" not in session:
+        return redirect("/login")
+
     mensaje = ""
 
     if request.method == "POST":
@@ -114,10 +149,14 @@ def index():
         ID Curso: <input type="number" name="curso_id" required><br>
         <input type="submit" value="Agregar Inscripción">
     </form>
+
+    <br><a href="/logout">Cerrar sesión 🔒</a>
     """
 
-    return f"{mensaje}<br>{formulario}<br>{tabla_estudiantes}<br>{tabla_cursos}<br>{tabla_inscripciones}"
+    return f"<p>{mensaje}</p>{formulario}<br>{tabla_estudiantes}<br>{tabla_cursos}<br>{tabla_inscripciones}"
 
+
+# Ejecutar app
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
