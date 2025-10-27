@@ -1,4 +1,4 @@
-# app.py - añade registro de usuarios y login usando DB (hash de contraseñas)
+# app.py - añade botón "Registrar" visible en la página de login (y en la principal)
 from flask import Flask, request, redirect, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -7,7 +7,7 @@ import os
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "clave-secreta")  # ¡Reemplaza esto en producción!
 
-# Configuración de base de datos
+# Configuración de base de datos (por defecto sqlite para desarrollo)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "sqlite:///practica_demo.db")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -95,16 +95,21 @@ def register():
 
         return "<h3>✅ Registro exitoso. Ya puedes iniciar sesión.</h3><a href='/login'>Ir a login</a>"
 
-    # Formulario de registro
+    # Formulario de registro (HTML simple con pequeño estilo)
     return """
-        <h2>Registrarse</h2>
-        <form method="POST">
-            Usuario: <input type="text" name="username" required><br>
-            Contraseña: <input type="password" name="password" required><br>
-            Repite Contraseña: <input type="password" name="password2" required><br>
-            <input type="submit" value="Registrar">
-        </form>
-        <p>¿Ya tienes cuenta? <a href="/login">Inicia sesión</a></p>
+        <div style="font-family:sans-serif;max-width:520px;margin:30px auto;padding:20px;border:1px solid #ddd;border-radius:8px;">
+            <h2>Registrarse</h2>
+            <form method="POST">
+                <label>Usuario:</label><br>
+                <input type="text" name="username" required style="width:100%;padding:8px;margin:6px 0;"><br>
+                <label>Contraseña:</label><br>
+                <input type="password" name="password" required style="width:100%;padding:8px;margin:6px 0;"><br>
+                <label>Repetir Contraseña:</label><br>
+                <input type="password" name="password2" required style="width:100%;padding:8px;margin:6px 0;"><br>
+                <button type="submit" style="padding:10px 14px;border-radius:6px;background:#28a745;color:white;border:none;">Registrar</button>
+            </form>
+            <p style="margin-top:12px;">¿Ya tienes cuenta? <a href="/login">Inicia sesión</a></p>
+        </div>
     """
 
 
@@ -112,6 +117,7 @@ def register():
 def login():
     """
     Login que verifica contra la tabla users (usando hash).
+    La página muestra un botón 'Registrar' que lleva a /register.
     """
     if request.method == "POST":
         usuario = request.form.get("usuario", "").strip()
@@ -127,14 +133,22 @@ def login():
         else:
             return "<h3>❌ Usuario o contraseña incorrectos</h3><a href='/login'>Volver</a>"
 
+    # Formulario de login con botón Registrar
     return """
-        <h2>Iniciar sesión</h2>
-        <form method="POST">
-            Usuario: <input type="text" name="usuario" required><br>
-            Contraseña: <input type="password" name="contrasena" required><br>
-            <input type="submit" value="Entrar">
-        </form>
-        <p>¿No tienes cuenta? <a href="/register">Regístrate</a></p>
+        <div style="font-family:sans-serif;max-width:520px;margin:30px auto;padding:20px;border:1px solid #ddd;border-radius:8px;text-align:center;">
+            <h2>Iniciar sesión</h2>
+            <form method="POST" style="text-align:left;">
+                <label>Usuario:</label><br>
+                <input type="text" name="usuario" required style="width:100%;padding:8px;margin:6px 0;"><br>
+                <label>Contraseña:</label><br>
+                <input type="password" name="contrasena" required style="width:100%;padding:8px;margin:6px 0;"><br>
+                <div style="display:flex;gap:10px;justify-content:flex-start;margin-top:8px;">
+                    <button type="submit" style="padding:10px 14px;border-radius:6px;background:#007bff;color:white;border:none;">Entrar</button>
+                    <a href="/register" style="display:inline-block;padding:10px 14px;border-radius:6px;background:#6c757d;color:white;text-decoration:none;">Registrar</a>
+                </div>
+            </form>
+            <p style="margin-top:12px;color:#666;">(o usa usuarios de prueba: admin/adminpass, angel/1234, juan/password123)</p>
+        </div>
     """
 
 
@@ -206,7 +220,15 @@ def index():
         tabla_inscripciones += f"<tr><td>{i.id}</td><td>{i.estudiante_id}</td><td>{i.curso_id}</td><td>{i.fecha_inscripcion}</td></tr>"
     tabla_inscripciones += "</table>"
 
+    # Añadir botón registrar en la página principal también (por conveniencia)
     formulario = """
+    <div style="max-width:900px;margin:12px auto;">
+        <div style="display:flex;gap:12px;align-items:center;">
+            <a href="/register" style="padding:8px 12px;background:#6c757d;color:white;border-radius:6px;text-decoration:none;">Registrar nuevo usuario</a>
+            <a href="/logout" style="padding:8px 12px;background:#dc3545;color:white;border-radius:6px;text-decoration:none;">Cerrar sesión</a>
+        </div>
+    </div>
+
     <h2>Agregar Estudiante</h2>
     <form method="POST">
         <input type="hidden" name="tipo" value="estudiante">
@@ -230,8 +252,6 @@ def index():
         ID Curso: <input type="number" name="curso_id" required><br>
         <input type="submit" value="Agregar Inscripción">
     </form>
-
-    <br><a href="/logout">Cerrar sesión 🔒</a>
     """
 
     return f"<p>{mensaje}</p>{formulario}<br>{tabla_estudiantes}<br>{tabla_cursos}<br>{tabla_inscripciones}"
