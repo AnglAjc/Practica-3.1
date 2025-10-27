@@ -1,17 +1,25 @@
-from flask import Flask, request, redirect, session
+# app.py - añade registro de usuarios y login usando DB (hash de contraseñas)
+from flask import Flask, request, redirect, session, url_for
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
 import os
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "clave-secreta")  # ¡Reemplaza esto en producción!
 
 # Configuración de base de datos
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "sqlite:///practica_demo.db")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Modelos
+# --- MODELOS ---
+class User(db.Model):
+    __tablename__ = "users"
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(100), nullable=False, unique=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+
 class Estudiante(db.Model):
     __tablename__ = "estudiantes"
     id = db.Column(db.Integer, primary_key=True)
@@ -33,14 +41,87 @@ class Inscripcion(db.Model):
     __table_args__ = (db.UniqueConstraint('estudiante_id', 'curso_id', name='_est_curso_uc'),)
 
 
-# Ruta login
+# --- UTILIDADES ---
+def create_initial_users():
+    """Crea usuarios de prueba si no existen (opcional)."""
+    if User.query.first() is not None:
+        return
+    sample = [
+        ("admin", "adminpass"),
+        ("angel", "1234"),
+        ("juan", "password123"),
+    ]
+    for u, p in sample:
+        hashed = generate_password_hash(p)
+        user = User(username=u, password_hash=hashed)
+        db.session.add(user)
+    db.session.commit()
+    app.logger.info("Usuarios de prueba creados.")
+
+
+# --- RUTAS DE AUTENTICACIÓN ---
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    """
+    Registro de nuevos usuarios.
+    Guarda username y hash de la contraseña en la tabla users.
+    """
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        password2 = request.form.get("password2", "")
+
+        # Validaciones básicas
+        if not username or not password:
+            return "<h3>❌ Debes completar usuario y contraseña.</h3><a href='/register'>Volver</a>"
+        if password != password2:
+            return "<h3>❌ Las contraseñas no coinciden.</h3><a href='/register'>Volver</a>"
+
+        # Verificar si el usuario ya existe
+        existing = User.query.filter_by(username=username).first()
+        if existing:
+            return "<h3>❌ El nombre de usuario ya existe.</h3><a href='/register'>Volver</a>"
+
+        # Crear usuario con hash de contraseña
+        hashed = generate_password_hash(password)
+        nuevo = User(username=username, password_hash=hashed)
+        try:
+            db.session.add(nuevo)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            return f"<h3>❌ Error al crear usuario: {str(e)}</h3><a href='/register'>Volver</a>"
+
+        return "<h3>✅ Registro exitoso. Ya puedes iniciar sesión.</h3><a href='/login'>Ir a login</a>"
+
+    # Formulario de registro
+    return """
+        <h2>Registrarse</h2>
+        <form method="POST">
+            Usuario: <input type="text" name="username" required><br>
+            Contraseña: <input type="password" name="password" required><br>
+            Repite Contraseña: <input type="password" name="password2" required><br>
+            <input type="submit" value="Registrar">
+        </form>
+        <p>¿Ya tienes cuenta? <a href="/login">Inicia sesión</a></p>
+    """
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    """
+    Login que verifica contra la tabla users (usando hash).
+    """
     if request.method == "POST":
-        usuario = request.form.get("usuario")
-        contrasena = request.form.get("contrasena")
+        usuario = request.form.get("usuario", "").strip()
+        contrasena = request.form.get("contrasena", "")
 
-        if usuario == "angel" and contrasena == "1234":
+        if not usuario or not contrasena:
+            return "<h3>❌ Completa usuario y contraseña.</h3><a href='/login'>Volver</a>"
+
+        user = User.query.filter_by(username=usuario).first()
+        if user and check_password_hash(user.password_hash, contrasena):
             session["usuario"] = usuario
             return redirect("/")
         else:
@@ -53,17 +134,17 @@ def login():
             Contraseña: <input type="password" name="contrasena" required><br>
             <input type="submit" value="Entrar">
         </form>
+        <p>¿No tienes cuenta? <a href="/register">Regístrate</a></p>
     """
 
 
-# Ruta logout
 @app.route("/logout")
 def logout():
     session.pop("usuario", None)
     return redirect("/login")
 
 
-# Ruta principal protegida
+# --- RUTAS PRINCIPALES PROTEGIDAS ---
 @app.route("/", methods=["GET", "POST"])
 def index():
     if "usuario" not in session:
@@ -156,8 +237,10 @@ def index():
     return f"<p>{mensaje}</p>{formulario}<br>{tabla_estudiantes}<br>{tabla_cursos}<br>{tabla_inscripciones}"
 
 
-# Ejecutar app
+# --- EJECUCIÓN ---
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
+        # Descomenta si quieres crear usuarios de prueba automáticamente:
+        # create_initial_users()
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
